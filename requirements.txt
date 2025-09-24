@@ -1,0 +1,24 @@
+# Core FastAPI dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Firebase integration
+firebase-admin==6.2.0
+
+# PDF processing
+pdfminer.six==20221105
+PyMuPDF==1.23.8
+
+# OCR functionality
+pytesseract==0.3.10
+
+# Math solving
+sympy==1.12
+
+# Additional utilities
+python-multipart==0.0.6
+pydantic==2.5.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+aiofiles==24.1.0
