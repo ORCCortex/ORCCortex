@@ -58,6 +58,7 @@ echo ""
 # Project structure
 echo "📁 Project Structure:"
 echo "   • FastAPI backend with modular architecture"
+echo "   • Application code in src/app/ directory"
 echo "   • OCR service (PDF text extraction)"
 echo "   • Math solving service (SymPy integration)"
 echo "   • Firebase integration (Auth + Storage)"
@@ -80,6 +81,12 @@ if python -c "from main import app; print('✅ Application imports successfully'
     echo "✅ Main application can be imported"
 else
     echo "❌ Application import failed"
+fi
+
+if python -c "from src.app.services.math_service import math_service; print('✅ Services import successfully')" 2>/dev/null; then
+    echo "✅ Services can be imported from src/app"
+else
+    echo "❌ Services import failed from src/app"
 fi
 echo ""
 

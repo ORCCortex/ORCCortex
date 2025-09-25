@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime
 import aiofiles
 
-from app.models.problem import Problem, ProblemResponse, ProblemStatus
-from app.services.firebase_service import firebase_service
-from app.services.ocr_service import ocr_service
-from app.utils.config import settings
-from app.utils.exceptions import create_http_exception, ValidationError, FileProcessingError
+from src.app.models.problem import Problem, ProblemResponse, ProblemStatus
+from src.app.services.firebase_service import firebase_service
+from src.app.services.ocr_service import ocr_service
+from src.app.utils.config import settings
+from src.app.utils.exceptions import create_http_exception, ValidationError, FileProcessingError
 
 router = APIRouter()
 security = HTTPBearer()

@@ -2,7 +2,7 @@ import sympy
 from sympy import symbols, sympify, solve, simplify, expand, factor, diff, integrate
 from typing import Dict, Any, List, Optional
 import re
-from app.utils.exceptions import MathSolvingError
+from src.app.utils.exceptions import MathSolvingError
 
 
 class MathService:

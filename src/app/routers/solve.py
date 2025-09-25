@@ -4,10 +4,10 @@ from typing import Dict, Any, List
 from datetime import datetime
 import uuid
 
-from app.models.solution import Solution, SolutionResponse, SolutionCreate, SolutionStatus
-from app.services.firebase_service import firebase_service
-from app.services.math_service import math_service
-from app.utils.exceptions import create_http_exception, AuthorizationError, ValidationError
+from src.app.models.solution import Solution, SolutionResponse, SolutionCreate, SolutionStatus
+from src.app.services.firebase_service import firebase_service
+from src.app.services.math_service import math_service
+from src.app.utils.exceptions import create_http_exception, AuthorizationError, ValidationError
 
 router = APIRouter()
 security = HTTPBearer()

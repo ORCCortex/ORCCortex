@@ -3,9 +3,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from app.models.problem import ProblemResponse, ProblemStatus
-from app.services.firebase_service import firebase_service
-from app.utils.exceptions import create_http_exception, AuthorizationError
+from src.app.models.problem import ProblemResponse, ProblemStatus
+from src.app.services.firebase_service import firebase_service
+from src.app.utils.exceptions import create_http_exception, AuthorizationError
 
 router = APIRouter()
 security = HTTPBearer()

@@ -2,8 +2,8 @@ import firebase_admin
 from firebase_admin import credentials, auth, storage
 from typing import Optional
 import os
-from app.utils.config import settings
-from app.utils.exceptions import AuthenticationError, FileProcessingError
+from src.app.utils.config import settings
+from src.app.utils.exceptions import AuthenticationError, FileProcessingError
 
 
 class FirebaseService:

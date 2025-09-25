@@ -5,9 +5,9 @@ import uvicorn
 import os
 from datetime import datetime
 
-from app.routers import upload, problems, solve
-from app.utils.config import settings
-from app.utils.exceptions import ORCCortexException, create_http_exception
+from src.app.routers import upload, problems, solve
+from src.app.utils.config import settings
+from src.app.utils.exceptions import ORCCortexException, create_http_exception
 
 # Create FastAPI application
 app = FastAPI(

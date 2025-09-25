@@ -5,8 +5,8 @@ import re
 from typing import List, Tuple, Optional
 from PIL import Image
 import io
-from app.utils.config import settings
-from app.utils.exceptions import OCRError, FileProcessingError
+from src.app.utils.config import settings
+from src.app.utils.exceptions import OCRError, FileProcessingError
 
 
 class OCRService:
