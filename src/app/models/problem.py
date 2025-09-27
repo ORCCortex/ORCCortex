@@ -19,8 +19,9 @@ class Problem(BaseModel):
     original_filename: str
     file_path: str
     page_number: Optional[int] = None  # Page number in the original PDF
-    extracted_text: Optional[str] = None
-    math_expressions: Optional[List[str]] = None
+    extracted_text: Optional[str] = None  # Raw extracted text (legacy)
+    markdown_content: Optional[str] = None  # Markdown formatted content
+    math_expressions: Optional[List[str]] = None  # Legacy field for backward compatibility
     status: ProblemStatus = ProblemStatus.PENDING
     created_at: datetime
     updated_at: datetime
@@ -38,8 +39,9 @@ class ProblemResponse(BaseModel):
     user_id: str
     original_filename: str
     page_number: Optional[int] = None  # Page number in the original PDF
-    extracted_text: Optional[str] = None
-    math_expressions: Optional[List[str]] = None
+    extracted_text: Optional[str] = None  # Raw extracted text (legacy)
+    markdown_content: Optional[str] = None  # Markdown formatted content
+    math_expressions: Optional[List[str]] = None  # Legacy field for backward compatibility
     status: ProblemStatus
     created_at: datetime
     updated_at: datetime
@@ -47,8 +49,9 @@ class ProblemResponse(BaseModel):
 
 class ProblemUpdate(BaseModel):
     """Model for updating problem data"""
-    extracted_text: Optional[str] = None
-    math_expressions: Optional[List[str]] = None
+    extracted_text: Optional[str] = None  # Raw extracted text (legacy)
+    markdown_content: Optional[str] = None  # Markdown formatted content
+    math_expressions: Optional[List[str]] = None  # Legacy field for backward compatibility
     status: Optional[ProblemStatus] = None
 
 

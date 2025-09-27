@@ -9,7 +9,7 @@ import fitz  # PyMuPDF
 
 from src.app.models.problem import Problem, ProblemResponse, ProblemStatus, MultipleProblemsResponse
 from src.app.services.firebase_service import firebase_service
-from src.app.services.ocr_service import ocr_service
+from src.app.services.markdown_ocr_service import markdown_ocr_service
 from src.app.utils.config import settings
 from src.app.utils.exceptions import create_http_exception, ValidationError, FileProcessingError
 
@@ -40,26 +40,32 @@ def get_pdf_page_count(file_path: str) -> int:
 
 
 async def process_uploaded_file_pages(file_path: str, problem_ids_with_pages: list, user_id: str):
-    """Background task to process uploaded PDF file page by page"""
+    """Background task to process uploaded PDF file page by page - convert to markdown"""
     try:
-        # Extract text and math expressions for each page
-        page_results = await ocr_service.process_pdf_by_pages(file_path)
+        # Convert PDF to markdown for each page
+        page_results = await markdown_ocr_service.convert_pdf_to_markdown(file_path)
         
         # Process each page
-        for i, (page_num, text, math_expressions) in enumerate(page_results):
+        for i, (page_num, markdown_content) in enumerate(page_results):
             if i < len(problem_ids_with_pages):
                 problem_id = problem_ids_with_pages[i]
                 
-                # Update problem with extracted data in database
+                # Determine status based on content extraction
+                if markdown_content and markdown_content.strip() and markdown_content != "*(Empty page)*":
+                    status = ProblemStatus.COMPLETED.value
+                    print(f"Successfully extracted content for problem {problem_id} (page {page_num}): {len(markdown_content)} characters")
+                else:
+                    status = ProblemStatus.COMPLETED.value  # Still completed, just no text
+                    print(f"Problem {problem_id} (page {page_num}): No text extracted - likely image-based content")
+                
+                # Update problem with markdown content in database
                 update_data = {
-                    'extracted_text': text,
-                    'math_expressions': math_expressions,
-                    'status': ProblemStatus.COMPLETED.value
+                    'markdown_content': markdown_content or "*(No text extracted - PDF may contain images or complex formatting)*",
+                    'status': status
                 }
                 
                 try:
                     await firebase_service.update_problem(problem_id, update_data)
-                    print(f"Successfully processed problem {problem_id} (page {page_num}): {len(text)} characters, {len(math_expressions)} expressions")
                 except Exception as db_error:
                     print(f"Database update failed for problem {problem_id}: {str(db_error)}")
                     # Update status to failed if database update fails
@@ -91,19 +97,18 @@ async def process_uploaded_file_pages(file_path: str, problem_ids_with_pages: li
 async def process_uploaded_file(file_path: str, problem_id: str, user_id: str):
     """Background task to process uploaded PDF file (legacy single-problem support)"""
     try:
-        # Extract text and math expressions
-        text, math_expressions = await ocr_service.process_pdf(file_path)
+        # Convert PDF to markdown
+        markdown_content = await markdown_ocr_service.convert_single_pdf_to_markdown(file_path)
         
-        # Update problem with extracted data in database
+        # Update problem with markdown content in database
         update_data = {
-            'extracted_text': text,
-            'math_expressions': math_expressions,
+            'markdown_content': markdown_content,
             'status': ProblemStatus.COMPLETED.value
         }
         
         try:
             await firebase_service.update_problem(problem_id, update_data)
-            print(f"Successfully processed problem {problem_id}: {len(text)} characters, {len(math_expressions)} expressions")
+            print(f"Successfully processed problem {problem_id}: {len(markdown_content)} characters of markdown")
         except Exception as db_error:
             print(f"Database update failed for problem {problem_id}: {str(db_error)}")
             # Update status to failed if database update fails
@@ -428,12 +433,21 @@ async def get_upload_status(
         if problem_data.get('user_id') != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
         
+        # For backward compatibility, provide both extracted_text and markdown_content
+        markdown_content = problem_data.get('markdown_content', '')
+        extracted_text = problem_data.get('extracted_text', '')
+        
+        # If we have markdown but no extracted_text, use markdown as extracted_text for compatibility
+        if markdown_content and not extracted_text:
+            extracted_text = markdown_content
+        
         return {
             "problem_id": problem_id,
             "status": problem_data.get('status', 'unknown'),
             "message": f"Problem is {problem_data.get('status', 'unknown')}",
-            "extracted_text": problem_data.get('extracted_text'),
-            "math_expressions": problem_data.get('math_expressions', []),
+            "extracted_text": extracted_text,  # Legacy field (now includes markdown if available)
+            "markdown_content": markdown_content,  # New markdown content
+            "math_expressions": problem_data.get('math_expressions', []),  # Legacy field
             "created_at": problem_data.get('created_at'),
             "updated_at": problem_data.get('updated_at')
         }

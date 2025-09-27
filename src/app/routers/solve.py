@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 
 from src.app.models.solution import Solution, SolutionResponse, SolutionCreate, SolutionStatus
 from src.app.services.firebase_service import firebase_service
-from src.app.services.math_service import math_service
+from src.app.services.gpt_oss_service import gpt_oss_service
 from src.app.utils.exceptions import create_http_exception, AuthorizationError, ValidationError
 
 router = APIRouter()
@@ -23,16 +23,17 @@ async def verify_user(credentials: HTTPAuthorizationCredentials = Depends(securi
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 
-async def solve_math_problem_background(solution_id: str, problem_id: str, user_id: str, math_expression: str):
-    """Background task to solve math problem"""
+async def solve_problem_background(solution_id: str, problem_id: str, user_id: str, markdown_content: str, page_number: Optional[int] = None):
+    """Background task to solve math problem using GPT OSS"""
     try:
-        # Solve the math expression
-        result = await math_service.solve_expression(math_expression)
+        # Solve the problem using GPT OSS
+        result = await gpt_oss_service.solve_problem(markdown_content, page_number)
         
         # Update solution with results in database
         update_data = {
-            'solution_steps': result.get('steps', {}),
+            'solution_steps': result.get('solution_steps', []),
             'final_answer': result.get('final_answer', 'No solution'),
+            'explanation': result.get('explanation', ''),
             'status': SolutionStatus.COMPLETED.value
         }
         
@@ -87,80 +88,73 @@ async def solve_problem(
         if problem_data.get('user_id') != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
         
-        # 3. Extract math expressions from the problem
-        math_expressions = problem_data.get('math_expressions', [])
+        # 3. Get markdown content from the problem
+        markdown_content = problem_data.get('markdown_content')
+        page_number = problem_data.get('page_number')
         
-        if not math_expressions:
-            raise ValidationError("No math expressions found in the problem")
+        if not markdown_content:
+            raise ValidationError("No content found in the problem to solve")
         
-        # Create solutions for each math expression
-        solutions = []
-        for expr in math_expressions:
-            solution_id = str(uuid.uuid4())
-            
-            solution = Solution(
-                id=solution_id,
-                problem_id=problem_id,
-                user_id=user_id,
-                math_expression=expr,
-                status=SolutionStatus.PENDING,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-            
-            # Save solution to database
-            try:
-                await firebase_service.save_solution({
-                    'id': solution.id,
-                    'problem_id': solution.problem_id,
-                    'user_id': solution.user_id,
-                    'math_expression': solution.math_expression,
-                    'status': solution.status.value,
-                    'created_at': solution.created_at,
-                    'updated_at': solution.updated_at
-                })
-            except Exception as e:
-                print(f"Database save warning for solution {solution_id}: {str(e)}")
-                # Continue without database save for now
-            
-            # Start background solving
-            background_tasks.add_task(
-                solve_math_problem_background,
-                solution_id,
-                problem_id,
-                user_id,
-                expr
-            )
-            
-            # Update status to solving
-            solution.status = SolutionStatus.SOLVING
-            solution.updated_at = datetime.now()
-            
-            # Update status in database
-            try:
-                await firebase_service.update_solution(solution_id, {
-                    'status': solution.status.value,
-                    'updated_at': solution.updated_at
-                })
-            except Exception as e:
-                print(f"Database update warning for solution {solution_id}: {str(e)}")
-            
-            solutions.append(solution)
+        # Create a single solution for the entire problem
+        solution_id = str(uuid.uuid4())
         
-        # Return the first solution (or you could return all)
-        if solutions:
-            first_solution = solutions[0]
-            return SolutionResponse(
-                id=first_solution.id,
-                problem_id=first_solution.problem_id,
-                user_id=first_solution.user_id,
-                math_expression=first_solution.math_expression,
-                status=first_solution.status,
-                created_at=first_solution.created_at,
-                updated_at=first_solution.updated_at
-            )
-        else:
-            raise ValidationError("No solutions could be created")
+        solution = Solution(
+            id=solution_id,
+            problem_id=problem_id,
+            user_id=user_id,
+            math_expression=f"Problem from page {page_number}" if page_number else "Problem content",
+            status=SolutionStatus.PENDING,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        
+        # Save solution to database
+        try:
+            await firebase_service.save_solution({
+                'id': solution.id,
+                'problem_id': solution.problem_id,
+                'user_id': solution.user_id,
+                'math_expression': solution.math_expression,
+                'status': solution.status.value,
+                'created_at': solution.created_at,
+                'updated_at': solution.updated_at
+            })
+        except Exception as e:
+            print(f"Database save warning for solution {solution_id}: {str(e)}")
+            # Continue without database save for now
+        
+        # Start background solving with GPT OSS
+        background_tasks.add_task(
+            solve_problem_background,
+            solution_id,
+            problem_id,
+            user_id,
+            markdown_content,
+            page_number
+        )
+        
+        # Update status to solving
+        solution.status = SolutionStatus.SOLVING
+        solution.updated_at = datetime.now()
+        
+        # Update status in database
+        try:
+            await firebase_service.update_solution(solution_id, {
+                'status': solution.status.value,
+                'updated_at': solution.updated_at
+            })
+        except Exception as e:
+            print(f"Database update warning for solution {solution_id}: {str(e)}")
+        
+        return SolutionResponse(
+            id=solution.id,
+            problem_id=solution.problem_id,
+            user_id=solution.user_id,
+            math_expression=solution.math_expression,
+            status=solution.status,
+            created_at=solution.created_at,
+            updated_at=solution.updated_at
+        )
         
     except ValidationError as e:
         raise create_http_exception(e)
@@ -174,9 +168,9 @@ async def solve_expression(
     user: Dict[str, Any] = Depends(verify_user)
 ) -> Dict[str, Any]:
     """
-    Solve a single math expression directly
+    Solve a single math expression directly using GPT OSS
     
-    - **expression**: Mathematical expression to solve
+    - **expression**: Mathematical expression or problem to solve
     - Returns solution steps and final answer
     """
     try:
@@ -184,12 +178,15 @@ async def solve_expression(
         if not expression:
             raise ValidationError("No expression provided")
         
-        # Solve the expression
-        result = await math_service.solve_expression(expression)
+        # Use GPT OSS to solve the expression
+        result = await gpt_oss_service.solve_problem(expression)
         
         return {
             "expression": expression,
-            "result": result,
+            "solution_steps": result.get('solution_steps', []),
+            "final_answer": result.get('final_answer', 'No solution'),
+            "explanation": result.get('explanation', ''),
+            "model_used": result.get('model_used', 'gpt-oss-20b'),
             "solved_at": datetime.now().isoformat()
         }
         

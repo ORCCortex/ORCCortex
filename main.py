@@ -5,7 +5,7 @@ import uvicorn
 import os
 from datetime import datetime
 
-from src.app.routers import upload, problems, solve
+from src.app.routers import upload, problems, solve, preview
 from src.app.utils.config import settings
 from src.app.utils.exceptions import ORCCortexException, create_http_exception
 
@@ -88,6 +88,12 @@ app.include_router(
     solve.router,
     prefix=settings.API_V1_STR,
     tags=["solve"]
+)
+
+app.include_router(
+    preview.router,
+    prefix=settings.API_V1_STR,
+    tags=["preview"]
 )
 
 

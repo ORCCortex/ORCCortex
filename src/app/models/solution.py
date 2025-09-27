@@ -20,6 +20,7 @@ class Solution(BaseModel):
     math_expression: str
     solution_steps: Optional[Dict[str, Any]] = None
     final_answer: Optional[str] = None
+    explanation: Optional[str] = None  # Added explanation field
     status: SolutionStatus = SolutionStatus.PENDING
     error_message: Optional[str] = None
     created_at: datetime
@@ -41,6 +42,7 @@ class SolutionResponse(BaseModel):
     math_expression: str
     solution_steps: Optional[Dict[str, Any]] = None
     final_answer: Optional[str] = None
+    explanation: Optional[str] = None  # Added explanation field
     status: SolutionStatus
     error_message: Optional[str] = None
     created_at: datetime
@@ -51,5 +53,6 @@ class SolutionUpdate(BaseModel):
     """Model for updating solution data"""
     solution_steps: Optional[Dict[str, Any]] = None
     final_answer: Optional[str] = None
+    explanation: Optional[str] = None  # Added explanation field
     status: Optional[SolutionStatus] = None
     error_message: Optional[str] = None

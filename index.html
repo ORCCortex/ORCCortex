@@ -10,7 +10,7 @@
         // Firebase config - SECURE VERSION
         // The actual API key has been regenerated and is stored securely
         const firebaseConfig = {
-            apiKey: "",
+            apiKey: "AIzaSyDawDrFn00B7g3IeJmBloi9Vdi8qSMgOPI",
             authDomain: "orccortex-543d1.firebaseapp.com",
             projectId: "orccortex-543d1",
             storageBucket: "orccortex-543d1.firebasestorage.app"
@@ -131,9 +131,11 @@
                     </div>
                     <div class="problem-content">
                         <div class="extracted-text">
-                            <h5>📝 Extracted Text:</h5>
+                            <h5>📝 Extracted Content:</h5>
                             <div id="text-${problem.id}" class="text-content">
-                                ${problem.status === 'processing' ? '⏳ Processing...' : (problem.extracted_text || 'No text extracted')}
+                                ${problem.status === 'processing' ? '⏳ Processing...' : 
+                                  problem.status === 'failed' ? '❌ Processing failed' :
+                                  (problem.markdown_content || problem.extracted_text || '⚠️ No text extracted - PDF may contain images or complex formatting')}
                             </div>
                         </div>
                         <div class="math-expressions">
@@ -220,9 +222,16 @@
             }
 
             if (textDiv) {
-                textDiv.innerHTML = problemData.extracted_text ? 
-                    `<pre>${problemData.extracted_text.substring(0, 500)}${problemData.extracted_text.length > 500 ? '...' : ''}</pre>` : 
-                    'No text extracted';
+                const content = problemData.markdown_content || problemData.extracted_text;
+                if (content && content.trim()) {
+                    textDiv.innerHTML = `<pre>${content.substring(0, 500)}${content.length > 500 ? '...' : ''}</pre>`;
+                } else if (problemData.status === 'failed') {
+                    textDiv.innerHTML = '❌ Processing failed';
+                } else if (problemData.status === 'completed') {
+                    textDiv.innerHTML = '⚠️ No text extracted - PDF may contain images or complex formatting that require OCR processing';
+                } else {
+                    textDiv.innerHTML = 'No text extracted';
+                }
             }
 
             if (mathDiv) {
