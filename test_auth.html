@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Auth Test</title>
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js';
+
+        // Your Firebase config - REPLACE WITH YOUR ACTUAL CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyAoupfWv5gh6CNGB3aCXSPOLeJN9iZ5Seg",
+            authDomain: "orccortex-543d1.firebaseapp.com",
+            projectId: "orccortex-543d1",
+            storageBucket: "orccortex-543d1.firebasestorage.app"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Make functions globally available
+        window.signIn = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const token = await userCredential.user.getIdToken();
+                
+                document.getElementById('token').value = token;
+                document.getElementById('status').innerHTML = '<div style="color: green;">✅ Signed in successfully!</div>';
+                console.log('Firebase ID Token:', token);
+            } catch (error) {
+                document.getElementById('status').innerHTML = '<div style="color: red;">❌ Error: ' + error.message + '</div>';
+            }
+        };
+
+        window.createUser = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const token = await userCredential.user.getIdToken();
+                
+                document.getElementById('token').value = token;
+                document.getElementById('status').innerHTML = '<div style="color: green;">✅ User created and signed in!</div>';
+                console.log('Firebase ID Token:', token);
+            } catch (error) {
+                document.getElementById('status').innerHTML = '<div style="color: red;">❌ Error: ' + error.message + '</div>';
+            }
+        };
+
+        window.copyToken = function() {
+            const token = document.getElementById('token');
+            token.select();
+            document.execCommand('copy');
+            alert('Token copied to clipboard!');
+        };
+    </script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        input, button, textarea { margin: 5px; padding: 10px; }
+        textarea { width: 100%; height: 200px; font-family: monospace; }
+        button { background: #4285f4; color: white; border: none; cursor: pointer; }
+        button:hover { background: #3367d6; }
+        .warning { background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔑 Firebase Authentication Test</h1>
+    
+    <div class="warning">
+        <strong>⚠️ Setup Required:</strong><br>
+        1. Go to Firebase Console → Project Settings → General<br>
+        2. Copy your Web API Key<br>
+        3. Replace "YOUR_API_KEY_HERE" in the code above<br>
+        4. Enable Email/Password authentication in Firebase Console → Authentication → Sign-in method
+    </div>
+
+    <h2>Step 1: Authentication</h2>
+    <div>
+        <input type="email" id="email" placeholder="test@example.com" value="test@example.com" style="width: 200px;">
+        <input type="password" id="password" placeholder="password123" value="testpassword123" style="width: 200px;">
+    </div>  
+    <div>
+        <button onclick="createUser()">Create New User</button>
+        <button onclick="signIn()">Sign In</button>
+    </div>
+    <div id="status"></div>
+
+    <h2>Step 2: Copy Token for API Testing</h2>
+    <textarea id="token" placeholder="Firebase ID Token will appear here..." readonly></textarea>
+    <button onclick="copyToken()">Copy Token</button>
+
+    <h2>Step 3: Test API Endpoints</h2>
+    <p>Once you have the token, use it in the following curl commands:</p>
+    <pre>
+# Upload PDF
+curl -X POST "http://localhost:8000/api/v1/upload" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@your_math_problem.pdf"
+
+# Get problems
+curl -X GET "http://localhost:8000/api/v1/problems/YOUR_USER_ID" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+# Solve problem
+curl -X POST "http://localhost:8000/api/v1/solve/PROBLEM_ID" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+    </pre>
+</body>
+</html>

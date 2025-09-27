@@ -1,0 +1,9 @@
+Mathematics Problems for Testing:
+
+1. Solve for x: 2x + 5 = 15
+2. Find the derivative of f(x) = x^2 + 3x - 2  
+3. Solve the quadratic equation: x^2 - 5x + 6 = 0
+4. Simplify: (x + 2)(x - 3)
+5. Find the integral: ∫(2x + 1)dx
+
+These are sample problems to test the OCR and math solving capabilities.

@@ -128,6 +128,37 @@ class OCRService:
             return text, math_expressions
         except Exception as e:
             raise OCRError(f"PDF processing failed: {str(e)}")
+    
+    async def process_pdf_by_pages(self, file_path: str) -> List[Tuple[int, str, List[str]]]:
+        """Process PDF page by page to extract text and math expressions for each page"""
+        try:
+            doc = fitz.open(file_path)
+            page_results = []
+            
+            for page_num in range(doc.page_count):
+                page = doc[page_num]
+                
+                # Extract text from this page
+                page_text = page.get_text()
+                
+                # If no text found, try OCR on this page
+                if not page_text.strip():
+                    # Convert page to image for OCR
+                    pix = page.get_pixmap()
+                    img_data = pix.tobytes("png")
+                    img = Image.open(io.BytesIO(img_data))
+                    page_text = pytesseract.image_to_string(img, lang='eng')
+                
+                # Extract math expressions from page text
+                math_expressions = await self.extract_math_expressions(page_text)
+                
+                # Store results: (page_number, text, math_expressions)
+                page_results.append((page_num + 1, page_text.strip(), math_expressions))
+            
+            doc.close()
+            return page_results
+        except Exception as e:
+            raise OCRError(f"PDF page-by-page processing failed: {str(e)}")
 
 
 # Global OCR service instance

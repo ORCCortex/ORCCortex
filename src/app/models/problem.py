@@ -18,6 +18,7 @@ class Problem(BaseModel):
     user_id: str
     original_filename: str
     file_path: str
+    page_number: Optional[int] = None  # Page number in the original PDF
     extracted_text: Optional[str] = None
     math_expressions: Optional[List[str]] = None
     status: ProblemStatus = ProblemStatus.PENDING
@@ -36,6 +37,7 @@ class ProblemResponse(BaseModel):
     id: str
     user_id: str
     original_filename: str
+    page_number: Optional[int] = None  # Page number in the original PDF
     extracted_text: Optional[str] = None
     math_expressions: Optional[List[str]] = None
     status: ProblemStatus
@@ -48,3 +50,11 @@ class ProblemUpdate(BaseModel):
     extracted_text: Optional[str] = None
     math_expressions: Optional[List[str]] = None
     status: Optional[ProblemStatus] = None
+
+
+class MultipleProblemsResponse(BaseModel):
+    """Response model for multiple problems created from a single PDF"""
+    total_pages: int
+    problems: List[ProblemResponse]
+    original_filename: str
+    upload_status: str

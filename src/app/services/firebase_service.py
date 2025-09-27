@@ -141,6 +141,7 @@ class FirebaseService:
                 'user_id': problem_data['user_id'],
                 'original_filename': problem_data['original_filename'],
                 'file_path': problem_data['file_path'],
+                'page_number': problem_data.get('page_number'),
                 'extracted_text': problem_data.get('extracted_text'),
                 'math_expressions': problem_data.get('math_expressions', []),
                 'status': problem_data['status'],
@@ -287,6 +288,20 @@ class FirebaseService:
         except Exception as e:
             print(f"Failed to get problem solutions: {str(e)}")
             return []
+
+    async def delete_solution(self, solution_id: str) -> bool:
+        """Delete solution from Firestore"""
+        try:
+            if not self._db:
+                return False
+            
+            solution_ref = self._db.collection('solutions').document(solution_id)
+            solution_ref.delete()
+            
+            return True
+        except Exception as e:
+            print(f"Failed to delete solution: {str(e)}")
+            return False
 
 
 # Global Firebase service instance
