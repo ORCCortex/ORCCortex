@@ -67,5 +67,10 @@ htmlcov/
 *.tmp
 *.temp
 
+# Private/sensitive files
 private/
+firebase-config.js
+config.js
+.env.local
+.env.production
 

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ORCCortex - PDF Math Solver</title>
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js';
+
+        // Firebase config - SECURE VERSION
+        // The actual API key has been regenerated and is stored securely
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "orccortex-543d1.firebaseapp.com",
+            projectId: "orccortex-543d1",
+            storageBucket: "orccortex-543d1.firebasestorage.app"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Global variables
+        let currentToken = '';
+        let currentUserId = '';
+        let currentProblems = [];
+
+        // Auto-login with fixed credentials
+        window.autoLogin = async function() {
+            const email = 'test@example.com';
+            const password = 'testpassword123';
+            
+            try {
+                document.getElementById('authStatus').innerHTML = '<div style="color: blue;">🔄 Signing in...</div>';
+                
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                currentToken = await userCredential.user.getIdToken();
+                currentUserId = userCredential.user.uid;
+                
+                document.getElementById('authStatus').innerHTML = '<div style="color: green;">✅ Authenticated successfully!</div>';
+                document.getElementById('uploadSection').style.display = 'block';
+                
+                console.log('Auto-login successful, token:', currentToken);
+            } catch (error) {
+                document.getElementById('authStatus').innerHTML = '<div style="color: red;">❌ Authentication failed: ' + error.message + '</div>';
+                console.error('Auto-login error:', error);
+            }
+        };
+
+        // Upload PDF
+        window.uploadPDF = async function() {
+            const fileInput = document.getElementById('pdfFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a PDF file');
+                return;
+            }
+
+            if (!currentToken) {
+                alert('Please authenticate first');
+                return;
+            }
+
+            document.getElementById('uploadStatus').innerHTML = '<div style="color: blue;">🔄 Uploading PDF...</div>';
+            document.getElementById('uploadBtn').disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Upload failed');
+                }
+
+                const result = await response.json();
+                currentProblems = result.problems;
+                
+                document.getElementById('uploadStatus').innerHTML = `<div style="color: green;">✅ Upload successful! ${result.total_pages} pages processed.</div>`;
+                
+                // Display PDF preview and problems
+                displayPDFPreview(file);
+                displayProblems(result);
+                
+                // Start checking status
+                setTimeout(() => checkAllProblemStatus(), 3000);
+
+            } catch (error) {
+                document.getElementById('uploadStatus').innerHTML = `<div style="color: red;">❌ Upload failed: ${error.message}</div>`;
+                console.error('Upload error:', error);
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        };
+
+        // Display PDF preview
+        window.displayPDFPreview = function(file) {
+            const previewDiv = document.getElementById('pdfPreview');
+            const url = URL.createObjectURL(file);
+            
+            previewDiv.innerHTML = `
+                <h3>📄 PDF Preview</h3>
+                <embed src="${url}" type="application/pdf" width="100%" height="400px" />
+                <p><strong>File:</strong> ${file.name} (${Math.round(file.size / 1024)} KB)</p>
+            `;
+            previewDiv.style.display = 'block';
+        };
+
+        // Display problems for each page
+        window.displayProblems = function(uploadResult) {
+            const problemsDiv = document.getElementById('problemsList');
+            problemsDiv.innerHTML = '<h3>📋 Problems by Page</h3>';
+            
+            uploadResult.problems.forEach((problem, index) => {
+                const problemDiv = document.createElement('div');
+                problemDiv.className = 'problem-card';
+                problemDiv.id = `problem-${problem.id}`;
+                
+                problemDiv.innerHTML = `
+                    <div class="problem-header">
+                        <h4>📄 Page ${problem.page_number}</h4>
+                        <span class="status-badge status-${problem.status}">${problem.status}</span>
+                    </div>
+                    <div class="problem-content">
+                        <div class="extracted-text">
+                            <h5>📝 Extracted Text:</h5>
+                            <div id="text-${problem.id}" class="text-content">
+                                ${problem.status === 'processing' ? '⏳ Processing...' : (problem.extracted_text || 'No text extracted')}
+                            </div>
+                        </div>
+                        <div class="math-expressions">
+                            <h5>🧮 Math Expressions:</h5>
+                            <div id="math-${problem.id}" class="math-content">
+                                ${problem.status === 'processing' ? '⏳ Processing...' : (problem.math_expressions?.length > 0 ? problem.math_expressions.join(', ') : 'No math expressions found')}
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <button class="solve-btn" onclick="solveProblem('${problem.id}', ${problem.page_number})" 
+                                    ${problem.status !== 'completed' ? 'disabled' : ''}>
+                                🧮 Solve Problem
+                            </button>
+                        </div>
+                        <div id="solution-${problem.id}" class="solution-content" style="display: none;">
+                            <h5>💡 Solution:</h5>
+                            <div class="solution-text"></div>
+                        </div>
+                    </div>
+                `;
+                
+                problemsDiv.appendChild(problemDiv);
+            });
+            
+            problemsDiv.style.display = 'block';
+        };
+
+        // Check status of all problems
+        window.checkAllProblemStatus = async function() {
+            if (!currentProblems.length) return;
+
+            for (const problem of currentProblems) {
+                if (problem.status !== 'completed') {
+                    await checkProblemStatus(problem.id);
+                }
+            }
+
+            // Check again in 5 seconds if any are still processing
+            const stillProcessing = currentProblems.some(p => p.status === 'processing');
+            if (stillProcessing) {
+                setTimeout(() => checkAllProblemStatus(), 5000);
+            }
+        };
+
+        // Check individual problem status
+        window.checkProblemStatus = async function(problemId) {
+            try {
+                const response = await fetch(`http://localhost:8000/api/v1/upload/status/${problemId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const result = await response.json();
+                
+                // Update problem in array
+                const problemIndex = currentProblems.findIndex(p => p.id === problemId);
+                if (problemIndex !== -1) {
+                    currentProblems[problemIndex].status = result.status;
+                    currentProblems[problemIndex].extracted_text = result.extracted_text;
+                    currentProblems[problemIndex].math_expressions = result.math_expressions;
+                }
+
+                // Update UI
+                updateProblemDisplay(problemId, result);
+
+            } catch (error) {
+                console.error('Status check error:', error);
+            }
+        };
+
+        // Update problem display
+        window.updateProblemDisplay = function(problemId, problemData) {
+            const statusBadge = document.querySelector(`#problem-${problemId} .status-badge`);
+            const textDiv = document.getElementById(`text-${problemId}`);
+            const mathDiv = document.getElementById(`math-${problemId}`);
+            const solveBtn = document.querySelector(`#problem-${problemId} .solve-btn`);
+
+            if (statusBadge) {
+                statusBadge.textContent = problemData.status;
+                statusBadge.className = `status-badge status-${problemData.status}`;
+            }
+
+            if (textDiv) {
+                textDiv.innerHTML = problemData.extracted_text ? 
+                    `<pre>${problemData.extracted_text.substring(0, 500)}${problemData.extracted_text.length > 500 ? '...' : ''}</pre>` : 
+                    'No text extracted';
+            }
+
+            if (mathDiv) {
+                mathDiv.textContent = problemData.math_expressions?.length > 0 ? 
+                    problemData.math_expressions.slice(0, 5).join(', ') + (problemData.math_expressions.length > 5 ? '...' : '') : 
+                    'No math expressions found';
+            }
+
+            if (solveBtn) {
+                solveBtn.disabled = problemData.status !== 'completed';
+            }
+        };
+
+        // Solve problem
+        window.solveProblem = async function(problemId, pageNumber) {
+            const solutionDiv = document.getElementById(`solution-${problemId}`);
+            const solveBtn = document.querySelector(`#problem-${problemId} .solve-btn`);
+            
+            solveBtn.disabled = true;
+            solveBtn.textContent = '⏳ Solving...';
+            
+            solutionDiv.style.display = 'block';
+            solutionDiv.querySelector('.solution-text').innerHTML = '🔄 Processing solution...';
+
+            try {
+                const response = await fetch(`http://localhost:8000/api/v1/solve/${problemId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Solve failed');
+                }
+
+                const result = await response.json();
+                
+                // Wait a bit then check solution status
+                setTimeout(() => checkSolutionStatus(result.id, problemId), 3000);
+
+            } catch (error) {
+                solutionDiv.querySelector('.solution-text').innerHTML = `<div style="color: red;">❌ Error: ${error.message}</div>`;
+                console.error('Solve error:', error);
+            } finally {
+                solveBtn.disabled = false;
+                solveBtn.textContent = '🧮 Solve Problem';
+            }
+        };
+
+        // Check solution status
+        window.checkSolutionStatus = async function(solutionId, problemId) {
+            try {
+                const response = await fetch(`http://localhost:8000/api/v1/solve/status/${solutionId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const result = await response.json();
+                const solutionDiv = document.getElementById(`solution-${problemId}`);
+                
+                if (result.status === 'completed') {
+                    solutionDiv.querySelector('.solution-text').innerHTML = `
+                        <div class="solution-result">
+                            <p><strong>Math Expression:</strong> ${result.math_expression || 'N/A'}</p>
+                            <p><strong>Solution Steps:</strong></p>
+                            <pre>${JSON.stringify(result.solution_steps, null, 2) || 'No detailed steps available'}</pre>
+                            <p><strong>Final Answer:</strong> <span class="final-answer">${result.final_answer || 'Could not solve'}</span></p>
+                        </div>
+                    `;
+                } else if (result.status === 'solving') {
+                    setTimeout(() => checkSolutionStatus(solutionId, problemId), 3000);
+                } else {
+                    solutionDiv.querySelector('.solution-text').innerHTML = `<div style="color: orange;">⚠️ Status: ${result.status}</div>`;
+                }
+
+            } catch (error) {
+                console.error('Solution status check error:', error);
+            }
+        };
+
+        // Auto-login when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            autoLogin();
+        });
+    </script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            padding: 20px; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        h1 { 
+            color: #2c3e50; 
+            text-align: center; 
+            margin-bottom: 30px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }
+        
+        .auth-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .upload-section {
+            display: none;
+            margin-bottom: 30px;
+        }
+        
+        input[type="file"] {
+            margin: 10px;
+            padding: 10px;
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+            width: 300px;
+        }
+        
+        button { 
+            background: #3498db; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-size: 16px;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        
+        button:hover { 
+            background: #2980b9; 
+        }
+        
+        button:disabled { 
+            background: #bdc3c7; 
+            cursor: not-allowed; 
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-pending { background: #f39c12; color: white; }
+        .status-processing { background: #3498db; color: white; }
+        .status-completed { background: #27ae60; color: white; }
+        .status-failed { background: #e74c3c; color: white; }
+        
+        .problem-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 20px;
+            background: #fafafa;
+            transition: box-shadow 0.3s;
+        }
+        
+        .problem-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .problem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .problem-content h5 {
+            color: #2c3e50;
+            margin: 15px 0 8px 0;
+        }
+        
+        .text-content {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .math-content {
+            background: #ecf0f1;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            color: #2c3e50;
+        }
+        
+        .actions {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .solve-btn {
+            background: #e67e22;
+            font-size: 14px;
+            padding: 10px 20px;
+        }
+        
+        .solve-btn:hover {
+            background: #d35400;
+        }
+        
+        .solution-content {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f5e8;
+            border-radius: 8px;
+            border-left: 4px solid #27ae60;
+        }
+        
+        .solution-result {
+            font-family: 'Courier New', monospace;
+        }
+        
+        .final-answer {
+            background: #27ae60;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .preview-section {
+            display: none;
+        }
+        
+        embed {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 ORCCortex - PDF Math Solver</h1>
+        
+        <div class="auth-section">
+            <h2>🔐 Authentication</h2>
+            <div id="authStatus">
+                <div style="color: blue;">🔄 Initializing...</div>
+            </div>
+        </div>
+        
+        <div id="uploadSection" class="upload-section">
+            <h2>📤 Upload PDF</h2>
+            <div>
+                <input type="file" id="pdfFile" accept=".pdf" />
+                <button id="uploadBtn" onclick="uploadPDF()">🚀 Upload & Process PDF</button>
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+        
+        <div id="pdfPreview" class="preview-section"></div>
+        
+        <div id="problemsList" class="preview-section"></div>
+    </div>
+
+    <script>
+        // Additional utility functions can be added here
+        console.log('ORCCortex PDF Solver loaded');
+    </script>
+</body>
+</html>
