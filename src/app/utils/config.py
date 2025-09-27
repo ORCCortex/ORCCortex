@@ -27,6 +27,17 @@ class Settings:
     
     # API Configuration
     API_V1_STR: str = "/api/v1"
+    
+    # GPT OSS Model Configuration
+    GPT_OSS_MODEL_PATH: str = os.getenv(
+        "GPT_OSS_MODEL_PATH", 
+        "/Users/thanh/Workspace/ORCCortex/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf"
+    )
+    GPT_OSS_N_CTX: int = int(os.getenv("GPT_OSS_N_CTX", "4096"))
+    GPT_OSS_N_THREADS: int = int(os.getenv("GPT_OSS_N_THREADS", "4"))
+    GPT_OSS_N_GPU_LAYERS: int = int(os.getenv("GPT_OSS_N_GPU_LAYERS", "0"))
+    GPT_OSS_MAX_TOKENS: int = int(os.getenv("GPT_OSS_MAX_TOKENS", "2048"))
+    GPT_OSS_TEMPERATURE: float = float(os.getenv("GPT_OSS_TEMPERATURE", "0.1"))
 
 
 settings = Settings()
