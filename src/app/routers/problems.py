@@ -45,41 +45,30 @@ async def get_user_problems(
             # In a real application, you might check for admin privileges here
             raise AuthorizationError("You can only access your own problems")
         
-        # In a real application, you would query the database here
-        # For now, return mock data
-        mock_problems = [
-            ProblemResponse(
-                id="problem-1",
-                user_id=user_id,
-                original_filename="math_homework.pdf",
-                extracted_text="Solve for x: 2x + 5 = 15",
-                math_expressions=["2x + 5 = 15"],
-                status=ProblemStatus.COMPLETED,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            ),
-            ProblemResponse(
-                id="problem-2",
-                user_id=user_id,
-                original_filename="calculus_problems.pdf",
-                extracted_text="Find the derivative of f(x) = x^2 + 3x - 2",
-                math_expressions=["f(x) = x^2 + 3x - 2", "f'(x) = ?"],
-                status=ProblemStatus.PROCESSING,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-        ]
+        # Get problems from database
+        status_filter = status.value if status else None
+        problems_data = await firebase_service.get_user_problems(
+            user_id=user_id,
+            status=status_filter,
+            limit=limit,
+            offset=offset
+        )
         
-        # Apply status filter if provided
-        if status:
-            mock_problems = [p for p in mock_problems if p.status == status]
+        # Convert to ProblemResponse objects
+        problems = []
+        for problem_data in problems_data:
+            problems.append(ProblemResponse(
+                id=problem_data.get('id', ''),
+                user_id=problem_data.get('user_id', ''),
+                original_filename=problem_data.get('original_filename', ''),
+                extracted_text=problem_data.get('extracted_text'),
+                math_expressions=problem_data.get('math_expressions', []),
+                status=ProblemStatus(problem_data.get('status', 'pending')),
+                created_at=problem_data.get('created_at', datetime.now()),
+                updated_at=problem_data.get('updated_at', datetime.now())
+            ))
         
-        # Apply pagination
-        start_idx = offset
-        end_idx = offset + limit
-        paginated_problems = mock_problems[start_idx:end_idx]
-        
-        return paginated_problems
+        return problems
         
     except AuthorizationError as e:
         raise create_http_exception(e)
@@ -106,20 +95,29 @@ async def get_problem_details(
         if requesting_user_id != user_id:
             raise AuthorizationError("You can only access your own problems")
         
-        # In a real application, you would query the database here
-        # For now, return mock data
-        mock_problem = ProblemResponse(
-            id=problem_id,
-            user_id=user_id,
-            original_filename="sample_problem.pdf",
-            extracted_text="Solve the quadratic equation: x^2 - 5x + 6 = 0",
-            math_expressions=["x^2 - 5x + 6 = 0"],
-            status=ProblemStatus.COMPLETED,
-            created_at=datetime.now(),
-            updated_at=datetime.now()
+        # Get problem from database
+        problem_data = await firebase_service.get_problem(problem_id)
+        
+        if not problem_data:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
+        # Double-check user ownership (should match user_id from URL)
+        if problem_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Convert to ProblemResponse object
+        problem = ProblemResponse(
+            id=problem_data.get('id', ''),
+            user_id=problem_data.get('user_id', ''),
+            original_filename=problem_data.get('original_filename', ''),
+            extracted_text=problem_data.get('extracted_text'),
+            math_expressions=problem_data.get('math_expressions', []),
+            status=ProblemStatus(problem_data.get('status', 'pending')),
+            created_at=problem_data.get('created_at', datetime.now()),
+            updated_at=problem_data.get('updated_at', datetime.now())
         )
         
-        return mock_problem
+        return problem
         
     except AuthorizationError as e:
         raise create_http_exception(e)
@@ -146,10 +144,24 @@ async def delete_problem(
         if requesting_user_id != user_id:
             raise AuthorizationError("You can only delete your own problems")
         
-        # In a real application, you would:
-        # 1. Delete from database
-        # 2. Delete associated files from storage
-        # 3. Delete associated solutions
+        # First verify the problem exists and user owns it
+        problem_data = await firebase_service.get_problem(problem_id)
+        
+        if not problem_data:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
+        if problem_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Delete from database
+        delete_success = await firebase_service.delete_problem(problem_id)
+        
+        if not delete_success:
+            raise HTTPException(status_code=500, detail="Failed to delete problem from database")
+        
+        # TODO: Delete associated files from storage
+        # TODO: Delete associated solutions
+        # For now, just delete from database
         
         return {
             "message": f"Problem {problem_id} deleted successfully",

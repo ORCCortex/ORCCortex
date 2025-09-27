@@ -29,11 +29,37 @@ async def solve_math_problem_background(solution_id: str, problem_id: str, user_
         # Solve the math expression
         result = await math_service.solve_expression(math_expression)
         
-        # In a real application, you would update the database here
-        print(f"Solved problem {solution_id}: {result.get('final_answer', 'No solution')}")
+        # Update solution with results in database
+        update_data = {
+            'solution_steps': result.get('steps', {}),
+            'final_answer': result.get('final_answer', 'No solution'),
+            'status': SolutionStatus.COMPLETED.value
+        }
+        
+        try:
+            await firebase_service.update_solution(solution_id, update_data)
+            print(f"Successfully solved problem {solution_id}: {result.get('final_answer', 'No solution')}")
+        except Exception as db_error:
+            print(f"Database update failed for solution {solution_id}: {str(db_error)}")
+            # Update status to failed if database update fails
+            try:
+                await firebase_service.update_solution(solution_id, {
+                    'status': SolutionStatus.FAILED.value,
+                    'error_message': f"Database update failed: {str(db_error)}"
+                })
+            except Exception:
+                pass  # If this fails too, we can't do much more
         
     except Exception as e:
         print(f"Error solving problem {solution_id}: {str(e)}")
+        # Update status to failed in database
+        try:
+            await firebase_service.update_solution(solution_id, {
+                'status': SolutionStatus.FAILED.value,
+                'error_message': str(e)
+            })
+        except Exception:
+            pass  # If database update fails, we can't do much more
 
 
 @router.post("/solve/{problem_id}", response_model=SolutionResponse)
@@ -51,20 +77,25 @@ async def solve_problem(
     try:
         user_id = user.get('uid', 'anonymous')
         
-        # In a real application, you would:
         # 1. Retrieve the problem from database
+        problem_data = await firebase_service.get_problem(problem_id)
+        
+        if not problem_data:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
         # 2. Verify user owns the problem
+        if problem_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         # 3. Extract math expressions from the problem
+        math_expressions = problem_data.get('math_expressions', [])
         
-        # For now, use mock data
-        mock_math_expressions = ["2x + 5 = 15", "x^2 - 4 = 0"]
-        
-        if not mock_math_expressions:
+        if not math_expressions:
             raise ValidationError("No math expressions found in the problem")
         
         # Create solutions for each math expression
         solutions = []
-        for expr in mock_math_expressions:
+        for expr in math_expressions:
             solution_id = str(uuid.uuid4())
             
             solution = Solution(
@@ -77,6 +108,21 @@ async def solve_problem(
                 updated_at=datetime.now()
             )
             
+            # Save solution to database
+            try:
+                await firebase_service.save_solution({
+                    'id': solution.id,
+                    'problem_id': solution.problem_id,
+                    'user_id': solution.user_id,
+                    'math_expression': solution.math_expression,
+                    'status': solution.status.value,
+                    'created_at': solution.created_at,
+                    'updated_at': solution.updated_at
+                })
+            except Exception as e:
+                print(f"Database save warning for solution {solution_id}: {str(e)}")
+                # Continue without database save for now
+            
             # Start background solving
             background_tasks.add_task(
                 solve_math_problem_background,
@@ -86,8 +132,18 @@ async def solve_problem(
                 expr
             )
             
+            # Update status to solving
             solution.status = SolutionStatus.SOLVING
             solution.updated_at = datetime.now()
+            
+            # Update status in database
+            try:
+                await firebase_service.update_solution(solution_id, {
+                    'status': solution.status.value,
+                    'updated_at': solution.updated_at
+                })
+            except Exception as e:
+                print(f"Database update warning for solution {solution_id}: {str(e)}")
             
             solutions.append(solution)
         
@@ -157,45 +213,38 @@ async def get_problem_solutions(
     try:
         user_id = user.get('uid', 'anonymous')
         
-        # In a real application, you would query the database here
-        # For now, return mock data
-        mock_solutions = [
-            SolutionResponse(
-                id="solution-1",
-                problem_id=problem_id,
-                user_id=user_id,
-                math_expression="2x + 5 = 15",
-                solution_steps={
-                    "steps": [
-                        "Subtract 5 from both sides: 2x = 10",
-                        "Divide both sides by 2: x = 5"
-                    ]
-                },
-                final_answer="x = 5",
-                status=SolutionStatus.COMPLETED,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            ),
-            SolutionResponse(
-                id="solution-2",
-                problem_id=problem_id,
-                user_id=user_id,
-                math_expression="x^2 - 4 = 0",
-                solution_steps={
-                    "steps": [
-                        "Add 4 to both sides: x^2 = 4",
-                        "Take square root: x = ±2"
-                    ]
-                },
-                final_answer="x = 2 or x = -2",
-                status=SolutionStatus.COMPLETED,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-        ]
+        # First verify the problem exists and user owns it
+        problem_data = await firebase_service.get_problem(problem_id)
         
-        return mock_solutions
+        if not problem_data:
+            raise HTTPException(status_code=404, detail="Problem not found")
         
+        if problem_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Get all solutions for this problem from database
+        solutions_data = await firebase_service.get_problem_solutions(problem_id)
+        
+        # Convert to SolutionResponse objects
+        solutions = []
+        for solution_data in solutions_data:
+            solutions.append(SolutionResponse(
+                id=solution_data.get('id', ''),
+                problem_id=solution_data.get('problem_id', ''),
+                user_id=solution_data.get('user_id', ''),
+                math_expression=solution_data.get('math_expression', ''),
+                solution_steps=solution_data.get('solution_steps'),
+                final_answer=solution_data.get('final_answer'),
+                status=SolutionStatus(solution_data.get('status', 'pending')),
+                error_message=solution_data.get('error_message'),
+                created_at=solution_data.get('created_at', datetime.now()),
+                updated_at=solution_data.get('updated_at', datetime.now())
+            ))
+        
+        return solutions
+        
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve solutions: {str(e)}")
 
@@ -214,31 +263,76 @@ async def get_solution_details(
     try:
         user_id = user.get('uid', 'anonymous')
         
-        # In a real application, you would query the database here
-        # For now, return mock data
-        mock_solution = SolutionResponse(
-            id=solution_id,
-            problem_id="mock-problem-id",
-            user_id=user_id,
-            math_expression="x^2 + 2x - 8 = 0",
-            solution_steps={
-                "original_expression": "x^2 + 2x - 8 = 0",
-                "expression_type": "quadratic",
-                "steps": [
-                    "Identify coefficients: a=1, b=2, c=-8",
-                    "Apply quadratic formula: x = (-b ± √(b²-4ac)) / 2a",
-                    "Calculate discriminant: Δ = 4 + 32 = 36",
-                    "x = (-2 ± 6) / 2",
-                    "Solutions: x = 2 or x = -4"
-                ]
-            },
-            final_answer="x = 2 or x = -4",
-            status=SolutionStatus.COMPLETED,
-            created_at=datetime.now(),
-            updated_at=datetime.now()
+        # Get solution from database
+        solution_data = await firebase_service.get_solution(solution_id)
+        
+        if not solution_data:
+            raise HTTPException(status_code=404, detail="Solution not found")
+        
+        # Verify user owns this solution
+        if solution_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Convert to SolutionResponse object
+        solution = SolutionResponse(
+            id=solution_data.get('id', ''),
+            problem_id=solution_data.get('problem_id', ''),
+            user_id=solution_data.get('user_id', ''),
+            math_expression=solution_data.get('math_expression', ''),
+            solution_steps=solution_data.get('solution_steps'),
+            final_answer=solution_data.get('final_answer'),
+            status=SolutionStatus(solution_data.get('status', 'pending')),
+            error_message=solution_data.get('error_message'),
+            created_at=solution_data.get('created_at', datetime.now()),
+            updated_at=solution_data.get('updated_at', datetime.now())
         )
         
-        return mock_solution
+        return solution
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve solution: {str(e)}")
+
+
+@router.get("/solve/status/{solution_id}")
+async def get_solution_status(
+    solution_id: str,
+    user: Dict[str, Any] = Depends(verify_user)
+) -> Dict[str, Any]:
+    """
+    Get the status of a solution processing
+    
+    - **solution_id**: ID of the solution to check
+    - Returns solution status and results if available
+    """
+    try:
+        user_id = user.get('uid', 'anonymous')
+        
+        # Get solution from database
+        solution_data = await firebase_service.get_solution(solution_id)
+        
+        if not solution_data:
+            raise HTTPException(status_code=404, detail="Solution not found")
+        
+        # Verify user owns this solution
+        if solution_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return {
+            "solution_id": solution_id,
+            "problem_id": solution_data.get('problem_id'),
+            "math_expression": solution_data.get('math_expression'),
+            "status": solution_data.get('status', 'unknown'),
+            "message": f"Solution is {solution_data.get('status', 'unknown')}",
+            "solution_steps": solution_data.get('solution_steps'),
+            "final_answer": solution_data.get('final_answer'),
+            "error_message": solution_data.get('error_message'),
+            "created_at": solution_data.get('created_at'),
+            "updated_at": solution_data.get('updated_at')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")

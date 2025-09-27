@@ -32,9 +32,26 @@ async def process_uploaded_file(file_path: str, problem_id: str, user_id: str):
         # Extract text and math expressions
         text, math_expressions = await ocr_service.process_pdf(file_path)
         
-        # Update problem with extracted data
-        # In a real application, you would update the database here
-        print(f"Processed problem {problem_id}: {len(text)} characters, {len(math_expressions)} expressions")
+        # Update problem with extracted data in database
+        update_data = {
+            'extracted_text': text,
+            'math_expressions': math_expressions,
+            'status': ProblemStatus.COMPLETED.value
+        }
+        
+        try:
+            await firebase_service.update_problem(problem_id, update_data)
+            print(f"Successfully processed problem {problem_id}: {len(text)} characters, {len(math_expressions)} expressions")
+        except Exception as db_error:
+            print(f"Database update failed for problem {problem_id}: {str(db_error)}")
+            # Update status to failed if database update fails
+            try:
+                await firebase_service.update_problem(problem_id, {
+                    'status': ProblemStatus.FAILED.value,
+                    'error_message': f"Database update failed: {str(db_error)}"
+                })
+            except Exception:
+                pass  # If this fails too, we can't do much more
         
         # Clean up local file
         if os.path.exists(file_path):
@@ -42,6 +59,14 @@ async def process_uploaded_file(file_path: str, problem_id: str, user_id: str):
             
     except Exception as e:
         print(f"Error processing file for problem {problem_id}: {str(e)}")
+        # Update status to failed in database
+        try:
+            await firebase_service.update_problem(problem_id, {
+                'status': ProblemStatus.FAILED.value,
+                'error_message': str(e)
+            })
+        except Exception:
+            pass  # If database update fails, we can't do much more
 
 
 @router.post("/upload", response_model=ProblemResponse)
@@ -104,6 +129,21 @@ async def upload_pdf(
             print(f"Firebase upload warning: {str(e)}")
             # Continue with local file path
         
+        # Save problem to database
+        try:
+            await firebase_service.save_problem({
+                'id': problem.id,
+                'user_id': problem.user_id,
+                'original_filename': problem.original_filename,
+                'file_path': problem.file_path,
+                'status': problem.status.value,
+                'created_at': problem.created_at,
+                'updated_at': problem.updated_at
+            })
+        except Exception as e:
+            print(f"Database save warning: {str(e)}")
+            # Continue without database save for now
+        
         # Start background processing
         background_tasks.add_task(
             process_uploaded_file,
@@ -115,6 +155,15 @@ async def upload_pdf(
         # Update status to processing
         problem.status = ProblemStatus.PROCESSING
         problem.updated_at = datetime.now()
+        
+        # Update status in database
+        try:
+            await firebase_service.update_problem(problem_id, {
+                'status': problem.status.value,
+                'updated_at': problem.updated_at
+            })
+        except Exception as e:
+            print(f"Database update warning: {str(e)}")
         
         return ProblemResponse(
             id=problem.id,
@@ -145,12 +194,28 @@ async def get_upload_status(
     - Returns processing status and results if available
     """
     try:
-        # In a real application, you would query the database here
-        # For now, return a mock response
+        user_id = user.get('uid', 'anonymous')
+        
+        # Get problem from database
+        problem_data = await firebase_service.get_problem(problem_id)
+        
+        if not problem_data:
+            raise HTTPException(status_code=404, detail="Problem not found")
+        
+        # Verify user owns this problem
+        if problem_data.get('user_id') != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         return {
             "problem_id": problem_id,
-            "status": "processing",
-            "message": "File is being processed"
+            "status": problem_data.get('status', 'unknown'),
+            "message": f"Problem is {problem_data.get('status', 'unknown')}",
+            "extracted_text": problem_data.get('extracted_text'),
+            "math_expressions": problem_data.get('math_expressions', []),
+            "created_at": problem_data.get('created_at'),
+            "updated_at": problem_data.get('updated_at')
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")

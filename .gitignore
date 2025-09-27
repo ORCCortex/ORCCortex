@@ -66,3 +66,6 @@ htmlcov/
 /tmp/
 *.tmp
 *.temp
+
+private/
+
