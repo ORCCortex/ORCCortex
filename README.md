@@ -1,6 +1,13 @@
+
+<div align="center">
+<img src="./logo.png" alt="ORCCortex" width="150px" height="150px">
+</div>
+
 # ORCCortex - OCR Math Solver
 
 A powerful Python-based OCR math solver application with FastAPI backend and Firebase integration. This application can extract mathematical expressions from PDF documents and solve them automatically using advanced OCR and symbolic math capabilities.
+
+![ORCCortex](./image.png)
 
 ## Features
 
